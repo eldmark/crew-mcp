@@ -9,6 +9,8 @@ docs/*
 !docs/guides/**
 !docs/assets/
 !docs/assets/**
+!docs/brainbox-adaptation/
+!docs/brainbox-adaptation/**
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/README.md
