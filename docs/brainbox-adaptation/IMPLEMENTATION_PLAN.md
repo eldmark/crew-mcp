@@ -28,6 +28,11 @@ Commands: `npm ci` (first time) · `npm run test:run` · `npm run lint` · `npm 
 - **Done:** all green; counts recorded in `docs/brainbox-adaptation/BASELINE.md`.
 - **Deps:** none · **Core:** no · **Rollback:** n/a.
 
+### T0.1 — Fix upstream Linux test failures (fork-only; decided 2026-09-24)
+- **Objective:** green baseline. File-version cache key (mtime + size + inode) for stat-keyed parse caches; fix the macOS-only assertion in `serve.test.ts`.
+- **Done:** see `BASELINE.md` §T0.1. Test precondition: `npm run build` and `crew-wait` resolvable on `PATH`.
+- **Deps:** T0 · **Core:** yes (bug fix, not a seam) · **Rollback:** revert the commit.
+
 ---
 
 ## Phase 1 — Minimal Proof of Concept (proves the architecture before building all of it)

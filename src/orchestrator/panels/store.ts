@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs
 import { join } from 'node:path';
 
 import { atomicWrite } from '../../utils/atomic-write.js';
+import { fileVersion, sameFileVersion, type FileVersion } from '../../utils/file-version.js';
 import { logger } from '../../utils/logger.js';
 import {
   PANEL_SCHEMA_VERSION,
@@ -10,13 +11,13 @@ import {
   type PanelStateV1,
 } from './schema.js';
 
-// mtimeMs-keyed parse cache: get_panel_status re-reads panel.json per poll
+// File-version-keyed parse cache (mtime/size/inode, see utils/file-version.ts): get_panel_status re-reads panel.json per poll
 // and run_panel re-reads it per reviewer transition, all of which zod-parse
 // the whole file. Writers replace via rename, so a changed mtime (including
 // from a sibling server process) invalidates; writePanelStateAtomic primes
 // the cache with the just-written object so self-writes skip the re-parse.
 // Callers treat panel state as immutable (all updates spread-copy).
-const parsedPanelStateCache = new Map<string, { mtimeMs: number; state: PanelStateV1 }>();
+const parsedPanelStateCache = new Map<string, { version: FileVersion; state: PanelStateV1 }>();
 
 export function panelDir(crewHome: string, panelId: string): string {
   return join(crewHome, 'panels', encodeURIComponent(panelId));
@@ -26,7 +27,7 @@ export function writePanelStateAtomic(targetPanelDir: string, state: PanelStateV
   const finalPath = join(targetPanelDir, 'panel.json');
   atomicWrite(finalPath, `${JSON.stringify(state, null, 2)}\n`, { makeDirs: false });
   try {
-    parsedPanelStateCache.set(finalPath, { mtimeMs: statSync(finalPath).mtimeMs, state });
+    parsedPanelStateCache.set(finalPath, { version: fileVersion(statSync(finalPath)), state });
   } catch {
     parsedPanelStateCache.delete(finalPath);
   }
@@ -34,9 +35,9 @@ export function writePanelStateAtomic(targetPanelDir: string, state: PanelStateV
 
 export function readPanelState(targetPanelDir: string): PanelStateV1 | undefined {
   const path = join(targetPanelDir, 'panel.json');
-  let mtimeMs: number;
+  let version: FileVersion;
   try {
-    mtimeMs = statSync(path).mtimeMs;
+    version = fileVersion(statSync(path));
   } catch (err) {
     if (isEnoent(err)) {
       parsedPanelStateCache.delete(path);
@@ -45,7 +46,7 @@ export function readPanelState(targetPanelDir: string): PanelStateV1 | undefined
     throw err;
   }
   const cached = parsedPanelStateCache.get(path);
-  if (cached && cached.mtimeMs === mtimeMs) {
+  if (cached && sameFileVersion(cached.version, version)) {
     return cached.state;
   }
   let raw: string;
@@ -83,7 +84,7 @@ export function readPanelState(targetPanelDir: string): PanelStateV1 | undefined
 
   try {
     const state = panelStateSchemaV1.parse(parsed);
-    parsedPanelStateCache.set(path, { mtimeMs, state });
+    parsedPanelStateCache.set(path, { version, state });
     return state;
   } catch (err) {
     throw new Error(

@@ -33,3 +33,13 @@ The mtime-cache issue is a **real correctness risk** beyond tests: a state rewri
 Plan rule: *"every task: `npm run test:run` green"*. The baseline is not green. Options:
 1. Treat these 6 as the accepted baseline (known-failing list); a task passes if it adds no new failures.
 2. Add a fork-only task **T0.1** that fixes the mtime cache (e.g. key on `mtimeMs` + `size` + `ino`, or use the nanosecond `mtimeNs` via `statSync(p, { bigint: true })`) and the Linux assumption in the serve test, so the baseline is green.
+
+## T0.1 — Resolution (2026-09-24, decision: option 2)
+
+- New `src/utils/file-version.ts`: a cached file version is `mtimeMs` + `size` + `ino` (size/ino optional on the cached side, so mtime-only entries keep old behaviour). Applied to every stat-keyed parse cache: `run-state.ts`, `tools/list-runs.ts`, `panels/store.ts`, `captain-inbox/store.ts`, `run-gc.ts` + the boot cache in `serve.ts`.
+- `captain-inbox/store.test.ts`: the tamper step now replaces the file via tmp + rename like real writers (an in-place same-size rewrite inside one tick is undetectable by `stat`; documented as the residual blind spot).
+- `serve.test.ts`: non-macOS branch excludes the `relay_verbatim` breadcrumb (which carries `crew-tail://` on every platform by design) and asserts no clickable Terminal link.
+- New `test/utils/file-version.test.ts`.
+- No version bump (fork policy, proposal §13.3).
+
+**Result:** `npm run lint` OK; `npm run test:run` (build + `crew-wait` on PATH) **2054 passed / 0 failed / 3 skipped**, twice in a row. New rule for later tasks: the suite must stay fully green.

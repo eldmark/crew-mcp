@@ -10,6 +10,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { logger } from '../utils/logger.js';
+import { sameFileVersion, type FileVersion } from '../utils/file-version.js';
 import { warnOnce } from '../utils/warn-once.js';
 import {
   DEFAULT_WORKTREE_TTL_DAYS,
@@ -193,8 +194,7 @@ export type RunGcArgs = {
   dryRun?: boolean;
 };
 
-export interface RunGcStateCacheEntry {
-  readonly mtimeMs: number;
+export interface RunGcStateCacheEntry extends FileVersion {
   readonly state: RunStateV1;
 }
 
@@ -653,7 +653,7 @@ async function readRunStateForGc(
   if (cached) {
     try {
       const current = await stat(join(runsDir, runId, 'state.json'));
-      if (current.mtimeMs === cached.mtimeMs) return cached.state;
+      if (sameFileVersion(cached, current)) return cached.state;
     } catch (err) {
       if (isEnoent(err)) return undefined;
       throw err;

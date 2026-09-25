@@ -41,6 +41,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import { atomicWrite } from '../utils/atomic-write.js';
 import { logBestEffortFailure } from '../utils/best-effort.js';
+import { fileVersion, sameFileVersion, type FileVersion } from '../utils/file-version.js';
 import { logger } from '../utils/logger.js';
 import { warnOnce } from '../utils/warn-once.js';
 import type {
@@ -470,12 +471,13 @@ export class RunStateStore {
   // assert the incremental-cursor and tail-cache paths actually bypass them.
   private fullEventLogReads = 0;
   private terminalTailScans = 0;
-  // mtimeMs-keyed parse cache for state.json (same shape as the list_runs
-  // cache). Writers replace the file via rename, so a changed mtime is the
-  // invalidation signal — including writes from sibling server processes.
+  // File-version-keyed parse cache for state.json (same shape as the
+  // list_runs cache). Writers replace the file via rename, so a changed
+  // mtime/size/inode is the invalidation signal — including writes from
+  // sibling server processes (see utils/file-version.ts).
   // Cached objects are shared references: read() callers must treat the
   // result as immutable (all current callers do; updaters spread-copy).
-  private readonly parsedStateCache = new Map<string, { mtimeMs: number; state: RunStateV1 }>();
+  private readonly parsedStateCache = new Map<string, { version: FileVersion; state: RunStateV1 }>();
   private overridesInvalidPending: boolean;
 
   constructor(options: RunStateStoreOptions) {
@@ -630,9 +632,9 @@ export class RunStateStore {
    */
   read(runId: string): RunStateV1 | undefined {
     const path = this.statePath(runId);
-    let mtimeMs: number;
+    let version: FileVersion;
     try {
-      mtimeMs = statSync(path).mtimeMs;
+      version = fileVersion(statSync(path));
     } catch (err) {
       if (isEnoent(err)) {
         this.parsedStateCache.delete(runId);
@@ -641,7 +643,7 @@ export class RunStateStore {
       throw err;
     }
     const cached = this.parsedStateCache.get(runId);
-    if (cached && cached.mtimeMs === mtimeMs) {
+    if (cached && sameFileVersion(cached.version, version)) {
       return cached.state;
     }
     let raw: string;
@@ -677,7 +679,7 @@ export class RunStateStore {
       );
     }
     const state = parsed as RunStateV1;
-    this.parsedStateCache.set(runId, { mtimeMs, state });
+    this.parsedStateCache.set(runId, { version, state });
     return state;
   }
 
@@ -1347,7 +1349,7 @@ export class RunStateStore {
     const path = this.statePath(runId);
     atomicWrite(path, JSON.stringify(state, null, 2));
     try {
-      this.parsedStateCache.set(runId, { mtimeMs: statSync(path).mtimeMs, state });
+      this.parsedStateCache.set(runId, { version: fileVersion(statSync(path)), state });
     } catch {
       this.parsedStateCache.delete(runId);
     }

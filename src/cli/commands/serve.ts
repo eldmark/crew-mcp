@@ -252,6 +252,7 @@ import { SubprocessProviderCommandRunner, type ProviderCommandRunner } from '../
 import { PrWatchStartIndex } from '../../pr-watch/start-index.js';
 import { PrWatchStore } from '../../pr-watch/store.js';
 import { PrWatchSurfaceLeaseController } from '../../pr-watch/surface-lease-controller.js';
+import { fileVersion, sameFileVersion, type FileVersion } from '../../utils/file-version.js';
 import { logger, setLogFilePath } from '../../utils/logger.js';
 import {
   appendToolJournal,
@@ -1774,10 +1775,10 @@ async function markAbandonedRunningRuns(args: StaleRunSweepArgs): Promise<void> 
     if (!entry.isDirectory()) continue;
     const runId = entry.name;
     if (runId === '.meta' || runId === '.locks') continue;
-    let beforeReadMtimeMs: number | undefined;
+    let beforeRead: FileVersion | undefined;
     if (args.bootStateCache) {
       try {
-        beforeReadMtimeMs = (await stat(join(runsDir, runId, 'state.json'))).mtimeMs;
+        beforeRead = fileVersion(await stat(join(runsDir, runId, 'state.json')));
       } catch {
         // The normal read path below owns missing/unreadable state handling.
       }
@@ -1792,11 +1793,11 @@ async function markAbandonedRunningRuns(args: StaleRunSweepArgs): Promise<void> 
       continue;
     }
     if (!state) continue;
-    if (args.bootStateCache && beforeReadMtimeMs !== undefined) {
+    if (args.bootStateCache && beforeRead !== undefined) {
       try {
-        const afterReadMtimeMs = (await stat(join(runsDir, runId, 'state.json'))).mtimeMs;
-        if (afterReadMtimeMs === beforeReadMtimeMs) {
-          args.bootStateCache.set(runId, { mtimeMs: afterReadMtimeMs, state });
+        const afterRead = fileVersion(await stat(join(runsDir, runId, 'state.json')));
+        if (sameFileVersion(beforeRead, afterRead)) {
+          args.bootStateCache.set(runId, { ...afterRead, state });
         }
       } catch {
         // A concurrent replacement invalidates this optional boot cache.

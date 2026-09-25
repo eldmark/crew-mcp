@@ -30,6 +30,7 @@ import type { ToolCallReturn, ToolHandlerDeps } from './shared.js';
 import { markdownContent } from './shared.js';
 import { renderUntrustedWorkerContentNotice } from '../untrusted-provenance.js';
 import { goalTurnToWire, type WireGoalTurn } from '../goals.js';
+import { fileVersion, sameFileVersion, type FileVersion } from '../../utils/file-version.js';
 
 const RUN_STATUS_VALUES = [
   'running',
@@ -104,7 +105,7 @@ export function listRunsToolHandler(
 
 interface ParsedRunStateCacheEntry {
   readonly path: string;
-  readonly mtimeMs: number;
+  readonly version: FileVersion;
   readonly repoRoot?: string;
   readonly parsed?: RunStateV1;
 }
@@ -289,16 +290,16 @@ function readRunState(
   path: string,
   options: { readonly repoRoot: string },
 ): RunStateV1 | undefined {
-  let mtimeMs: number;
+  let version: FileVersion;
   try {
-    mtimeMs = listRunsFs.statSync(path).mtimeMs;
+    version = fileVersion(listRunsFs.statSync(path));
   } catch {
     parsedRunStateCache.delete(runId);
     return undefined;
   }
 
   const cached = parsedRunStateCache.get(runId);
-  if (cached && cached.path === path && cached.mtimeMs === mtimeMs) {
+  if (cached && cached.path === path && sameFileVersion(cached.version, version)) {
     if (cached.parsed !== undefined) {
       return cached.parsed;
     }
@@ -320,23 +321,23 @@ function readRunState(
     });
     parsedRunStateCache.set(runId, {
       path,
-      mtimeMs: listRunsFs.statSync(path).mtimeMs,
+      version: fileVersion(listRunsFs.statSync(path)),
       parsed: quarantined,
     });
     return quarantined;
   }
   if (!isRunStateV1(parsed)) {
-    parsedRunStateCache.set(runId, { path, mtimeMs });
+    parsedRunStateCache.set(runId, { path, version });
     return undefined;
   }
   const parsedRepoRoot = typeof parsed.repoRoot === 'string'
     ? resolveRepoRoot(parsed.repoRoot)
     : undefined;
   if (parsedRepoRoot !== undefined && parsedRepoRoot !== options.repoRoot) {
-    parsedRunStateCache.set(runId, { path, mtimeMs, repoRoot: parsedRepoRoot });
+    parsedRunStateCache.set(runId, { path, version, repoRoot: parsedRepoRoot });
     return undefined;
   }
-  parsedRunStateCache.set(runId, { path, mtimeMs, repoRoot: parsedRepoRoot, parsed });
+  parsedRunStateCache.set(runId, { path, version, repoRoot: parsedRepoRoot, parsed });
   return parsed;
 }
 

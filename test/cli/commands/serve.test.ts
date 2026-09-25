@@ -2922,8 +2922,12 @@ describe('crew serve — run_agent tool', () => {
         expect(text).not.toContain(fileUrlHref(env.tail_command_path));
         expect(text).toContain('Tail in Terminal');
       } else {
-        expect(text).not.toContain('file://');
-        expect(text).not.toContain('crew-tail://');
+        // The relay breadcrumb (relay_verbatim) carries the tail URL on every
+        // platform; only the clickable Terminal link is macOS-specific.
+        const withoutRelay = text.replace(env.relay_verbatim, '');
+        expect(withoutRelay).not.toContain('file://');
+        expect(withoutRelay).not.toContain('crew-tail://');
+        expect(text).not.toContain('Tail in Terminal');
       }
       // Wait so the lifecycle terminates before harness teardown — otherwise
       // the dispatcher's listeners outlive the test.

@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -258,11 +258,15 @@ describe('captain inbox store', () => {
       });
       const dir = inboxRepoDir(h.crewHome, h.repoRoot);
       const mismatchedPath = join(dir, `${mismatched.msg_id}.json`);
+      // Replace via tmp + rename like real writers: an in-place rewrite of the
+      // same size inside one filesystem timestamp tick is indistinguishable
+      // from the cached version by stat alone (see utils/file-version.ts).
       writeFileSync(
-        mismatchedPath,
+        `${mismatchedPath}.tmp`,
         JSON.stringify({ ...mismatched, msg_id: good.msg_id }, null, 2) + '\n',
         'utf-8',
       );
+      renameSync(`${mismatchedPath}.tmp`, mismatchedPath);
       const traversalName = '../../outside';
       writeFileSync(
         join(dir, '01K0000000000000000000000.json'),

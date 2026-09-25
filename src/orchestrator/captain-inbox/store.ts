@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { withFileLock } from '../../utils/file-lock.js';
 import { logger } from '../../utils/logger.js';
+import { fileVersion, sameFileVersion, type FileVersion } from '../../utils/file-version.js';
 import { warnOnce } from '../../utils/warn-once.js';
 import { repoHash } from '../auth/token.js';
 import {
@@ -68,8 +69,7 @@ let lastSweepAtMsByRepo = new Map<string, number>();
 
 interface ParsedMessageCacheEntry {
   readonly path: string;
-  readonly mtimeMs: number;
-  readonly size: number;
+  readonly version: FileVersion;
   readonly message?: CaptainInboxMessage;
 }
 
@@ -415,16 +415,16 @@ function readMessagePath(
   path: string,
   expectedMsgId: string,
 ): { readonly path: string; readonly message: CaptainInboxMessage } | undefined {
-  let stat: { readonly mtimeMs: number; readonly size: number };
+  let version: FileVersion;
   try {
-    stat = messageStat(path);
+    version = fileVersion(captainInboxFs.statSync(path));
   } catch {
     parsedMessageCache.delete(path);
     return undefined;
   }
 
   const cached = parsedMessageCache.get(path);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+  if (cached && sameFileVersion(cached.version, version)) {
     return cached.message !== undefined ? { path, message: cached.message } : undefined;
   }
 
@@ -432,14 +432,14 @@ function readMessagePath(
     const parsed = JSON.parse(captainInboxFs.readFileSync(path, 'utf-8')) as unknown;
     const result = captainInboxMessageSchema.safeParse(parsed);
     if (!result.success || result.data.msg_id !== expectedMsgId) {
-      parsedMessageCache.set(path, { path, ...stat });
+      parsedMessageCache.set(path, { path, version });
       return undefined;
     }
-    parsedMessageCache.set(path, { path, ...stat, message: result.data });
+    parsedMessageCache.set(path, { path, version, message: result.data });
     return { path, message: result.data };
   } catch {
     // Readers tolerate in-flight temp files, corrupt files, and old shapes.
-    parsedMessageCache.set(path, { path, ...stat });
+    parsedMessageCache.set(path, { path, version });
     return undefined;
   }
 }
@@ -457,7 +457,7 @@ function cacheWrittenMessage(path: string, message: CaptainInboxMessage): void {
   try {
     parsedMessageCache.set(path, {
       path,
-      ...messageStat(path),
+      version: fileVersion(captainInboxFs.statSync(path)),
       message,
     });
   } catch {
@@ -465,10 +465,6 @@ function cacheWrittenMessage(path: string, message: CaptainInboxMessage): void {
   }
 }
 
-function messageStat(path: string): { readonly mtimeMs: number; readonly size: number } {
-  const stat = captainInboxFs.statSync(path);
-  return { mtimeMs: stat.mtimeMs, size: stat.size };
-}
 
 function pruneMissingMessageCacheEntries(dir: string, seenPaths: Set<string>): void {
   const expectedPathPrefix = `${dir}/`;
