@@ -39,7 +39,8 @@ Commands: `npm ci` (first time) · `npm run test:run` · `npm run lint` · `npm 
 
 The PoC implements **only what is needed to run one task end-to-end**: S1 (policy seam, merge + dispatch hooks only), S2 (labels), S3 (ephemeral for any adapter), S4 (env allow-list), a minimal ledger with 6 states, the host-permission approval channel, merge-time path policy, and findings parsing for one reviewer. Everything else is Phase 2.
 
-### P1 — Policy seam S1 (dispatch + merge only)
+### P1 — Policy seam S1 (dispatch + merge only) — **DONE 2026-09-24**
+- **Result:** `src/orchestrator/policy.ts` (+ 39 lines at call sites in `run-agent.ts`, `merge-run.ts`, `shared.ts`); config read strictly from `config.json` `policy.module` (absolute path) without touching `config-store.ts`, so default config shape and existing tests are unchanged; 15 tests in `test/orchestrator/policy.test.ts`; suite 2069 passed / 0 failed. Merge hook runs after the upstream confirmation gate and before any mutation. Found the same-user tampering risk (proposal §11.1 item 8) — decision needed before P6/P9.
 - **Objective:** `CrewPolicy` interface; call `beforeDispatch` in `run_agent` plan and `beforeMerge` in `merge_run` before any mutation; default no policy.
 - **Files:** new `src/orchestrator/policy.ts`; `src/orchestrator/tools/run-agent.ts`, `merge-run.ts` (call sites); `src/utils/config-store.ts` (`policy.module` key); tests `test/orchestrator/policy.test.ts`.
 - **Tests:** (1) no policy → behaviour identical (existing tests untouched); (2) policy refusing → typed error `policy_denied`, no worktree allocated / no merge; (3) policy throwing → refused (fail-closed); (4) policy warnings surfaced in envelope.

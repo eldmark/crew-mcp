@@ -54,6 +54,7 @@ import { logger } from '../../utils/logger.js';
 import { revokeRunAuthSidecar } from '../auth/index.js';
 import { readConfigFile } from '../../utils/config-store.js';
 import { isMergeable, runModeFromState } from '../run-mode.js';
+import { evaluatePolicy, resolveConfiguredPolicy } from '../policy.js';
 import type { ToolCallReturn, ToolHandlerDeps, MergeEnvelope } from './shared.js';
 import {
   checkoutEnvelope,
@@ -110,7 +111,10 @@ const MERGE_CONFIRMATION_REQUIRED_MESSAGE =
 
 export async function mergeRunToolHandler(
   args: MergeRunInput,
-  deps: Pick<ToolHandlerDeps, 'crewHome' | 'runStateStore' | 'worktreeManager' | 'dispatcher'>,
+  deps: Pick<
+    ToolHandlerDeps,
+    'crewHome' | 'runStateStore' | 'worktreeManager' | 'dispatcher' | 'resolvePolicy'
+  >,
 ): Promise<ToolCallReturn> {
   const state = deps.runStateStore.read(args.run_id);
   if (!state) {
@@ -182,7 +186,7 @@ export async function mergeRunToolHandler(
       + 'derive it from the run summary and retry. The server does not synthesize commit titles.',
     );
   }
-  const mergeWarnings = commitTitle !== undefined && commitTitle.length > 72
+  const mergeWarnings: string[] = commitTitle !== undefined && commitTitle.length > 72
     ? [`merge_run.commit_title_long: commit_title is ${commitTitle.length} characters; recommended maximum is 72 (warning only).`]
     : [];
   const confirmationGate = resolveMergeConfirmationGate(deps.crewHome);
@@ -192,6 +196,21 @@ export async function mergeRunToolHandler(
   if (confirmationGate.enabled && args.confirmed !== true) {
     return errorContent(MERGE_CONFIRMATION_REQUIRED_MESSAGE);
   }
+  const policyOutcome = await evaluatePolicy(
+    await (deps.resolvePolicy ?? (() => resolveConfiguredPolicy(deps.crewHome)))(),
+    'beforeMerge',
+    {
+      tool: 'merge_run',
+      input: args,
+      runState: state,
+      repoRoot: deps.runStateStore.repoRoot,
+      crewHome: deps.crewHome,
+    },
+  );
+  if (!policyOutcome.allow) {
+    return errorContent(policyOutcome.message);
+  }
+  mergeWarnings.push(...policyOutcome.warnings);
   try {
     const result = await deps.worktreeManager.mergeRunWorktree(args.run_id, {
       targetBranch: args.target_branch,

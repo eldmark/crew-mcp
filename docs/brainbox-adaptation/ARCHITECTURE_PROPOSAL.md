@@ -277,6 +277,11 @@ Crew and its captain run **on the same host as the BrainBox runtime**. The opera
 5. **Runtime isolation:** `crew` cannot reach Postgres (no password) and must not call `llama-server` ports directly; Brain API access (future Secretary) uses its own `agent` token with minimal scopes (`chat:use`).
 6. **Resources:** 16 GB RAM shared with the Brain API and GPU models. Cap concurrent workers (`maxConcurrent = 2`) and prefer cloud workers; local GPU-bound tests (e.g. T18) are human-run, not Crew-dispatched.
 7. **Exit:** when the laptop is ready, move Crew there; the `crew` user and its clone can be deleted without touching BrainBox.
+8. **Finding during P1 (2026-09-24) — same-user tampering. OPEN, human decision required.** Workers run as the same OS user as `crew-mcp serve`. Claude/agy workers run with permission bypass and can write anything `crew` can write: `~/.crew/config.json` (delete the `policy` key → no policy), the policy module if it lives under `~crew`, run state, and — once built — the task ledger and approval records (a worker could forge a human approval). The server-side seam is only as strong as the boundary around the workers. Options:
+   - **(a) Root-owned policy pin:** policy config + module + roles under `/etc/crew-brainbox/` and `/opt/crew-brainbox/` (root-owned, read-only for `crew`); a pin there overrides `config.json`. Protects policy *code and config*; does **not** protect ledger/approvals.
+   - **(b) Worker sandbox (recommended, with a):** run every non-Codex worker under `bubblewrap` (Debian package `bubblewrap`, not installed; unprivileged user namespaces are enabled) with only its worktree and a scratch dir writable and `~/.crew` read-only or hidden. Needs a small generic adapter seam (**S7: spawn wrapper**). Codex already has its own OS sandbox.
+   - **(c) Separate uid for workers:** strongest, but needs sudo rules or a helper daemon; heavier than (b).
+   Until one is in place, approvals/ledger claims in the PoC are **not** tamper-proof against a malicious worker; the PoC report must say so.
 
 ### 11.2 Secrets and local-only agents (request Q9)
 

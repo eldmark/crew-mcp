@@ -60,6 +60,7 @@ import { peerMessageInputSchema } from '../peer-messages/schema.js';
 import { logger } from '../../utils/logger.js';
 import { resolveCheckInIntervalMs } from '../../utils/config-store.js';
 import { dispatchRunAgentInternal } from '../dispatch-run-agent-internal.js';
+import { evaluatePolicy, resolveConfiguredPolicy } from '../policy.js';
 import { makeRunId } from '../run-id.js';
 import { loadWorkflowConfig } from '../../workflow/loader.js';
 import type { DispatchMcpEnv } from '../auth/sidecar-schema.js';
@@ -214,6 +215,20 @@ export async function runAgentToolHandler(
   } catch (err) {
     return errorContent(err instanceof Error ? err.message : String(err));
   }
+  const policyOutcome = await evaluatePolicy(
+    await (deps.resolvePolicy ?? (() => resolveConfiguredPolicy(deps.crewHome)))(),
+    'beforeDispatch',
+    {
+      tool: 'run_agent',
+      input: { ...args, agent_id: canonicalId },
+      repoRoot: deps.runStateStore.repoRoot,
+      crewHome: deps.crewHome,
+    },
+  );
+  if (!policyOutcome.allow) {
+    return errorContent(policyOutcome.message);
+  }
+  policyWarnings.push(...policyOutcome.warnings);
   const requestedMode = runModeFromInput(args);
   if (
     requestedMode.ok

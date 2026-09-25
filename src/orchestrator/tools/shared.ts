@@ -23,6 +23,7 @@ import type { FullConfig } from '../../workflow/types.js';
 import type { RunMode } from '../run-mode.js';
 import { renderUntrustedWorkerContentNotice } from '../untrusted-provenance.js';
 import { goalTurnToWire, type WireGoalTurn } from '../goals.js';
+import type { ResolvedPolicy } from '../policy.js';
 
 /**
  * Server-side cap on the long-poll wait that `get_run_status` honors
@@ -277,6 +278,8 @@ export interface ToolHandlerDeps {
   readonly clearQuotaCache?: () => void;
   readonly onTerminalPersisted?: (state: RunStateV1) => void | Promise<void>;
   readonly loadWorkflowConfig?: (projectRoot: string) => FullConfig;
+  /** Policy seam override (tests). Default: the policy configured in crewHome. */
+  readonly resolvePolicy?: () => Promise<ResolvedPolicy>;
 }
 
 interface DispatchAndRespondArgs {
